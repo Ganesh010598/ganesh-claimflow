@@ -6,14 +6,13 @@ import { ClaimApiService, Claim, CreateClaimRequest, Market, errorMessage } from
 @Component({
  selector:'app-new-claim', standalone:true, imports:[FormsModule, RouterLink],
  template: `
- <div class="eyebrow">CLAIMANT PORTAL / STEP 01</div>
- <div class="page-heading"><div><h1>Report an incident</h1><p>Start your claim in a few simple steps. We'll give you a reference number immediately.</p></div><div class="heading-icon">✧</div></div>
+ <div class="page-heading"><div><h1>New claim</h1><p>Enter the details of your incident.</p></div></div>
  @if (created) {
    <section class="card success-card" aria-live="polite"><div class="success-mark">✓</div><h2>Claim submitted successfully</h2><p>Save this reference number to track your claim.</p>
      <div class="claim-reference">{{created.claimNumber}}</div><div class="action-row"><a class="btn btn-primary" routerLink="/my-claims">Track my claims →</a><button class="btn btn-secondary" type="button" (click)="reset()">Submit another</button></div>
    </section>
  } @else {
-   <div class="two-column"><section class="card"><div class="section-title"><span class="section-number">01</span><div><h2>Incident details</h2><p>Complete the required fields below</p></div></div>
+   <div class="two-column"><section class="card"><div class="section-title"><div><h2>Claim details</h2></div></div>
      <form #f="ngForm" (ngSubmit)="submit()">
        <div class="form-grid">
          <label>Customer ID <span>*</span><input name="claimantId" required [(ngModel)]="form.claimantId" /></label>
@@ -25,9 +24,9 @@ import { ClaimApiService, Claim, CreateClaimRequest, Market, errorMessage } from
        </div>
        <label>Describe what happened <span>*</span><textarea name="description" required minlength="5" maxlength="2000" rows="5" placeholder="What happened, where, and what was damaged?" [(ngModel)]="form.description"></textarea></label>
        @if (error) {<div class="alert error" role="alert">{{error}}</div>}
-       <div class="form-actions"><span class="tiny-muted">All fields are required. Demo application only.</span><button class="btn btn-primary" type="submit" [disabled]="f.invalid || loading">{{loading ? 'Submitting…' : 'Submit claim →'}}</button></div>
+       <div class="form-actions"><span class="tiny-muted">Fields marked * are required.</span><button class="btn btn-primary" type="submit" [disabled]="f.invalid || loading">{{loading ? 'Submitting…' : 'Submit claim →'}}</button></div>
      </form>
-   </section><aside class="side-stack"><div class="info-panel"><div class="small-icon">✳</div><h3>What happens next?</h3><ol><li>We register your claim.</li><li>An officer picks it up for review.</li><li>You'll see status changes in My Claims.</li><li>We communicate the outcome here.</li></ol></div><div class="note-panel">ⓘ Your information remains in a local demo database. This is not a real claims submission service.</div></aside></div>
+   </section><aside class="side-stack"><div class="info-panel"><div class="small-icon">✳</div><h3>What happens next</h3><ol><li>We register your claim.</li><li>An officer picks it up for review.</li><li>You'll see status changes in My Claims.</li><li>We communicate the outcome here.</li></ol></div><div class="note-panel">Demo only. No real insurance claim will be created.</div></aside></div>
  }
  `
 })
