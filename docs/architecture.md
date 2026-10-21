@@ -1,4 +1,4 @@
-# Architecture notes
+# Ganesh's ClaimFlow — architecture notes
 
 These are the decisions behind my ClaimsFlow prototype and the trade-offs I would discuss in the technical walkthrough.
 
@@ -74,9 +74,9 @@ I was new to Angular, so I traced the screens in the order a user would encounte
 
 **New claim:** The form uses `FormsModule` and `[(ngModel)]` to bind fields to one request object. On submission it calls the API service, and the component displays loading, success or error state depending on the response. I like that the component doesn't need to know how the backend saves the claim.
 
-**My claims:** `ngOnInit()` loads a customer's claims. Selecting a row loads its history. If the status is `NEEDS_INFORMATION`, the page exposes a reply form and calls the information endpoint. Real authentication and ownership checks are not present.
+**My claims:** `ngOnInit()` loads a paginated set of a customer's claims, with optional status filtering. Selecting a row loads its history. If the status is `NEEDS_INFORMATION`, the page exposes a reply form and calls the information endpoint. Real authentication and ownership checks are not present.
 
-**Claims queue:** The officer screen keeps a selected claim and calls different API actions for assign, reserve, request info, decision and settlement. A common `execute()` function handles the returned claim or error. That is useful, but the inline template is large enough that I would separate it into an HTML file as one of my next changes.
+**Claims queue:** The officer screen uses a paginated, filterable work list and keeps a selected claim and calls different API actions for assign, reserve, request info, decision and settlement. A common `execute()` function handles the returned claim or error. That is useful, but the inline template is large enough that I would separate it into an HTML file as one of my next changes.
 
 **Dashboard:** Angular renders a `DashboardResponse` from `/api/dashboard`; the aggregation happens in Java, not the browser. This means changing the exposure calculation does not require rewriting the Angular page.
 
@@ -89,7 +89,7 @@ These are possible failure cases for future changes, not confirmed bugs in this 
 - Form values missing from a POST because a template binding is wrong.
 - An outdated selected status or activity timeline after a successful officer action.
 - A direct API request attempting an invalid status transition even if the UI hides the button.
-- Slow or overly large queue responses when claim volume increases without pagination.
+- Performance limitations in the legacy unpaged list or the dashboard aggregation as claim volume grows.
 - Accidentally combining financial exposure in different currencies.
 - Concurrent assignment or decision changes from two officer sessions.
 
@@ -113,7 +113,7 @@ The dashboard shows basic counts and workload by officer. For open claims, it ca
 
 Settled and rejected claims are excluded from open exposure. Values are grouped by market and currency because adding MYR, SGD and other currencies into one number would be misleading.
 
-This is only a demo calculation. Real liability reporting would need policy limits, financial reserves, FX rules and a proper reporting cut-off. The current implementation also loads claims into memory, which I would replace with database aggregation and pagination as the dataset grows.
+This is only a demo calculation. Real liability reporting would need policy limits, financial reserves, FX rules and a proper reporting cut-off. The updated claims-list paths filter in the database and support pagination. Dashboard aggregation still loads claim data into memory; I would move that reporting calculation into more targeted queries as the dataset grows.
 
 ## Current limitations
 
@@ -125,6 +125,31 @@ I also haven't implemented Kafka, an outbox, database migrations or performance 
 
 The backend includes Spring MVC integration tests for key operations and invalid workflow changes. My first test compilation failed because of an error in the generated Java strings. After correcting the test file, `mvn clean test` passed locally.
 
-My next priorities would be to strengthen edge-case tests, add database-side filtering, split large Angular templates into separate files, improve input/error messages and test the exact financial dashboard calculations.
+I have since expanded edge-case integration tests and added database-side filtering and pagination. Remaining priorities include splitting long Angular templates into separate files, improving form feedback, testing exact financial dashboard calculations, and adding production-grade authentication.
 
 The main trade-off here is deliberate: I wanted a small, working claims process that I could run and explain rather than a bigger system with more technologies but incomplete behavior.
+
+## Additions after the initial prototype
+
+### Paging and filtering
+
+`ClaimRepository` has two filtered JPQL query methods: one returns a sorted list to preserve the legacy endpoint, and the other takes `Pageable`. Both accept optional claimant ID and status filters. `ClaimService.listPaged()` validates page/size and uses descending `createdAt` and `id` order for stable results.
+
+There are two public GET behaviors for `/api/claims`:
+
+```text
+GET /api/claims?status=SUBMITTED                -> ClaimResponse[]
+GET /api/claims?page=0&size=10&status=SUBMITTED -> ClaimPageResponse
+```
+
+The response DTO is defined in `ClaimPageResponse.java`, instead of exposing Spring Data's internal `PageImpl` JSON shape. This keeps the public API fields explicit. The Angular `ClaimApiService.listPage()` builds the parameters; My Claims and Claims Queue display result totals and Previous/Next controls.
+
+This improves listing efficiency, but there are remaining scaling considerations: the legacy endpoint is still unpaged, the dashboard still aggregates in memory, and the prototype has no production authentication.
+
+### Visual cleanup
+
+The Angular layout uses a shared `styles.css`, a simpler `AppComponent` header/navigation, and consistent styles for form controls and cards. The redesign changes copy, spacing and visual hierarchy without changing the claim lifecycle or backend contracts. The browser title and favicon use the same branding.
+
+### Testing
+
+The backend tests use JUnit 5, Spring Boot's testing support and MockMvc, not hand-written Mockito stubs. The expanded integration tests cover more negative claim actions; a separate `ClaimPaginationIntegrationTest` exercises list compatibility and page metadata. The expanded workflow tests were reported passing locally after Maven was switched to Java 21. Final pagination tests and the Angular production build should be verified after applying the latest source changes.

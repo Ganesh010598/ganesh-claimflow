@@ -1,6 +1,6 @@
 # AI Working Journal
 
-**Project:** ClaimsFlow — Chubb APAC take-home assessment  
+**Project:** Ganesh's ClaimFlow (originally ClaimsFlow) — Chubb APAC take-home assessment  
 **Date:** 21 October 2026
 
 I'm keeping these notes in the order I worked through the project. The assessment specifically asked for an AI working journal, so I've included what I asked for, where AI helped, what I actually tested, and things I still want to improve. This isn't meant to be a polished report.
@@ -95,7 +95,7 @@ These are **realistic engineering scenarios I want to reproduce or test**, not e
 
 **C. Invalid status changes through the API.** A hidden or disabled button is not a security control. I want explicit tests for attempts to decide a claim before assignment or settle a rejected claim, and for incorrect officer IDs.
 
-**D. A claims queue with more records.** Right now the backend loads records and filters in memory. I want to move filtering to repository queries and add pagination, then check that the Angular page still shows the right claims.
+**D. A claims queue with more records.** The initial version loaded records and filtered them in memory. I later prepared a change using repository queries and pagination; the final builds and browser checks for that change still need to be recorded.
 
 **E. Exposure across currencies.** The code already groups market/currency amounts, but the current dashboard test mostly checks response shape. I want a test that creates known MYR and SGD claims and verifies their totals exactly.
 
@@ -107,9 +107,9 @@ I'm keeping the modular backend layout, request/response DTOs, transactions for 
 
 The obvious limits are real login and authorization, database migrations, genuine insurer policy rules, secure document handling, a reliable notification system and payment integration. Kafka and the transactional outbox are design ideas, not working features. Also, the current role switcher is only a demo navigation aid and shouldn't be described as access control.
 
-## 8. Notes for the next commits
+## 8. Notes for ongoing commits
 
-I plan to start with one baseline commit and then make small, testable changes instead of creating an artificial commit history. For each change I'll add a short note like this:
+After the initial baseline commit, I have been keeping subsequent changes separate so each one can be tested and reviewed. For any further change, I will add a short note like this:
 
 ```text
 Change / date:
@@ -165,8 +165,54 @@ These are scenarios I identified during review, not bugs I am claiming to have e
 - **Angular form validation:** Check required fields, invalid amounts and whether the user receives a useful message.
 - **Stale status display:** Check whether the officer screen refreshes selected claim details after an action.
 - **Invalid state changes:** Add tests for repeated settlement and approval from an invalid status.
-- **Large claims queues:** Replace in-memory filtering with repository queries and consider pagination.
+- **Large claims queues:** Now addressed in the prepared pagination changes; verify the new test suite and UI navigation after applying the changes.
 - **Dashboard accuracy:** Test amounts by currency, reserve and decision state.
 - **Concurrent assignment:** Verify that optimistic locking prevents one officer from silently overwriting another's update.
 
 For each change I'll record the failing behavior or test, the code change, and the result before making a separate Git commit.
+
+## Later development notes — actual updates
+
+### Commit 1: establishing a working baseline
+
+I created a local Git repository on `main` after getting the app running and reviewing the first set of documentation. The first commit was `aa9daa6` (`feat: implement initial claims management workflow`). I learned that a local Git commit does not automatically upload code to GitHub; the repository also needs a remote and `git push`.
+
+### Commit 2 work: more confidence in the backend
+
+After the main customer/officer flow was working, I wanted tests that checked what **should not** happen, not only successful actions. I expanded the JUnit 5 + MockMvc integration suite to cover more invalid workflow actions, validation cases, and incorrect officer IDs. This is an integration-test approach; I did not directly use Mockito to mock the service or repository.
+
+On the first rerun of `mvn clean test`, Maven failed before reaching the tests with `release version 21 not supported`. I checked the JDK setup and switched the active terminal back to Java 21. After that, I reported that the updated tests worked. That was an environment issue rather than a test assertion failure.
+
+This reminded me to check `mvn -version`, not just `java -version`, whenever Java projects behave differently between terminal sessions.
+
+### Commit 3 work: list filtering and pagination
+
+The original listing code retrieved all claims and applied filters in Java. I reviewed the difference between filtering in the service and letting the database do that work. The revised approach puts optional claimant/status filters into Spring Data JPA queries and adds `Pageable` support.
+
+I wanted to keep existing API clients working, so the original `/api/claims` call still returns an array. Supplying `page` opts in to a structured response with records and metadata. The new page limit is 10 by default (maximum 100), and Angular has Previous/Next controls and status filters for My Claims and the officer queue. Five dedicated pagination integration tests were added to the proposed changes.
+
+When the browser appeared blank during this stage, I asked how to restart the application. I restarted the Spring Boot and Angular servers in separate terminal windows and confirmed the website loaded again. I have not established that the blank screen was caused by a source-code bug. The final pagination build/test results were not shared, so I still need to record them.
+
+### UI pass: branding and layout
+
+When I reviewed My Claims in the browser, the filter fields and search button were not aligned well, and some of the extra wording made the page busy. I asked for a simpler, more professional UI that would be easy to explain and maintain.
+
+The updated frontend files use the name **Ganesh's ClaimFlow**, simplify the navigation, align the filtering area through consistent CSS, and tidy the New Claim, My Claims, Claims Queue and Dashboard layouts. I kept Angular's existing component structure and did not add a separate component library.
+
+The redesign was prepared as a frontend-only update. I still need to record a successful `npm run build`, confirm the layout in the browser after applying it, and save that verified result in Git.
+
+### Current verification checklist
+
+| Change | Status based on my recorded work |
+| --- | --- |
+| Initial backend tests after JSON fix | Passed |
+| Expanded JUnit integration tests after selecting JDK 21 | Passed (reported locally) |
+| Pagination integration tests after applying the ZIP | Not yet confirmed |
+| Browser application after restarting both servers | Working (reported locally) |
+| Redesigned UI after applying the UI ZIP | Needs explicit confirmation |
+| Angular `npm run build` with latest UI | Not yet confirmed |
+| `mvn clean package` with latest backend | Not yet confirmed |
+
+### What I would do next
+
+I would finish by running the backend tests and Angular build against the exact current working tree, checking the My Claims filters, officer queue pagination and the simpler layout in the browser, then commit the verified code and these notes. I'll keep a separate commit for documentation rather than changing old commit messages or inventing previous development stages.
