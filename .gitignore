@@ -1,0 +1,16 @@
+# Java / Maven
+backend/target/
+backend/data/
+*.class
+*.log
+# Angular / npm
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+# Editor / system
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+# Local configuration
+.env

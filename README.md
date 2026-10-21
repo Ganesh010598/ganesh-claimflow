@@ -1,0 +1,175 @@
+# ClaimsFlow
+
+ClaimsFlow is my take-home project for the Chubb APAC Fullstack Developer assessment. The idea is to put claim submission and claim handling in one place instead of relying on email and spreadsheets.
+
+There are two views in the same Angular app:
+
+- **Claimant:** submit a motor or property claim, check its status, see the history and reply when more information is needed.
+- **Claims officer:** pick up a claim, review it, request information, set a reserve, approve or reject it, and mark an approved claim as settled.
+
+I also included a small dashboard showing open claims, officer workload and estimated outstanding exposure.
+
+This is a working **prototype**, not a production claims system. I used AI to help create the initial codebase and have been running, checking and learning the implementation locally. The details of that process are in [AI_JOURNAL.md](AI_JOURNAL.md).
+
+## Tech stack
+
+| Area | Technology |
+| --- | --- |
+| Frontend | Angular 21, TypeScript, CSS |
+| Backend | Java 21, Spring Boot 3.5, REST API |
+| Persistence | Spring Data JPA, file-based H2 |
+| API documentation | Swagger/OpenAPI |
+| Tests | Spring Boot integration tests with MockMvc |
+
+I kept the backend as **one application** with separate claim and reporting packages. I preferred this over microservices because the main goal was to get the claims workflow right and keep the project easy to run and test. See [architecture.md](docs/architecture.md) for more detail.
+
+## Running it locally
+
+You will need Java 21, Maven, Node.js compatible with Angular 21, and npm. For this project, Node.js 22.12+ from the Node 22 line is a suitable choice.
+
+Check your installed versions:
+
+```bash
+java -version
+mvn -version
+node -v
+npm -v
+```
+
+Start the backend in one terminal:
+
+```bash
+cd backend
+mvn clean test
+mvn spring-boot:run
+```
+
+Then start Angular in a second terminal from the project root:
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+Open **http://localhost:4200**. Angular runs on port 4200 and proxies `/api` requests to Spring Boot on port 8080.
+
+Useful links while the backend is running:
+
+- Claims API: http://localhost:8080/api/claims
+- Dashboard API: http://localhost:8080/api/dashboard
+- Swagger UI: http://localhost:8080/swagger-ui/index.html
+- H2 console (development only): http://localhost:8080/h2-console
+
+The H2 database is stored under `backend/data/` when Spring Boot is started from the `backend` directory. It retains local claims between restarts. The app adds sample claims only if the database is empty. No real personal or claims data should be used in this demo.
+
+For more setup details, see [SETUP_GUIDE.md](SETUP_GUIDE.md).
+
+## How the workflow works
+
+```text
+SUBMITTED -> IN_REVIEW -> APPROVED -> SETTLED
+                 |
+                 +----> REJECTED
+                 |
+                 +----> NEEDS_INFORMATION -> IN_REVIEW
+```
+
+For example, I can create a motor claim from the claimant page and then find it in the officer queue. An officer assigns it, requests more information if needed and makes a decision. Every action is recorded in the claim history.
+
+The backend checks which status changes are allowed. This is important because hiding a button in Angular isn't enough to protect a business rule; someone could still call the API directly.
+
+To try the workflow:
+
+1. Create a MOTOR claim for `demo-customer-001` from **New claim**.
+2. Find it under **My claims**. Its first status should be `SUBMITTED`.
+3. In **Claims queue**, assign it to `officer-001`.
+4. Request more information and send a reply through **My claims**.
+5. Approve the claim with a valid amount and reason, then mark it settled.
+6. Check the activity history and refresh the dashboard.
+
+For a negative case, try to settle the same claim again using Swagger. The API should reject the invalid transition with HTTP `409 Conflict`.
+
+## A quick tour of the pages
+
+I kept the pages focused on the two user journeys instead of adding a lot of unrelated screens.
+
+| Page | What it does | Main code |
+| --- | --- | --- |
+| **New claim** | Collects incident details, posts them to the API, and shows the claim number | `new-claim.component.ts` |
+| **My claims** | Finds claims by demo customer ID, shows the timeline, and handles information replies | `my-claims.component.ts` |
+| **Claims queue** | Loads the work list and runs officer actions through the API service | `claims-queue.component.ts` |
+| **Dashboard** | Requests workload and exposure data from the backend | `dashboard.component.ts` |
+
+A request normally follows this path: **Angular component → `ClaimApiService` → Spring controller → `ClaimService` → JPA/H2 → JSON response → updated UI**. The controller handles HTTP; the service is where I expect the rules to be checked.
+
+## Main APIs
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| POST | `/api/claims` | Create a claim |
+| GET | `/api/claims` | List claims, optionally filtered by claimant or status |
+| GET | `/api/claims/{id}` | Get claim details |
+| GET | `/api/claims/{id}/history` | Get the activity history |
+| POST | `/api/claims/{id}/assign` | Assign to an officer |
+| POST | `/api/claims/{id}/reserve` | Set estimated reserve |
+| POST | `/api/claims/{id}/request-info` | Ask for more information |
+| POST | `/api/claims/{id}/information` | Submit the claimant's reply |
+| POST | `/api/claims/{id}/decision` | Approve or reject |
+| POST | `/api/claims/{id}/settle` | Mark as settled |
+| GET | `/api/dashboard` | Get basic workload and exposure totals |
+
+Example `POST /api/claims` request:
+
+```json
+{
+  "claimantId": "demo-customer-001",
+  "claimantName": "Alex Tan",
+  "claimType": "MOTOR",
+  "market": "MY",
+  "incidentDate": "2026-10-18",
+  "description": "Rear bumper damaged in a parking incident",
+  "claimedAmount": 3500.00
+}
+```
+
+The six markets in the code (MY, SG, HK, TH, VN and ID) are **demo assumptions**. The assessment mentions six markets but doesn't specify which ones. Currency is derived from the market.
+
+## Code structure
+
+```text
+backend/src/main/java/com/chubb/claims/
+  claim/api/          Controllers and request/response DTOs
+  claim/domain/       Claim, ClaimActivity, statuses, markets
+  claim/service/      Claim workflow and business rules
+  claim/repository/   JPA repositories
+  reporting/          Dashboard calculations
+  common/             Exception handling
+
+frontend/src/app/
+  core/               API service
+  features/claimant/  Submit and track claims
+  features/officer/   Queue and dashboard
+  app.routes.ts       Page routing
+```
+
+## What I have checked so far
+
+- `mvn clean test` initially failed due to incorrect JSON escaping in the generated Java test file. I replaced the affected test file and reran the command. **The second run passed.**
+- I ran the frontend locally and checked that the UI was working with the backend. The main claim flow was working in my manual check.
+- I have **not yet recorded** a separate successful `mvn clean package` or `npm run build` result in the journal. Those are part of my final checks.
+
+## Known gaps
+
+I intentionally kept the scope small. These are the main things I would improve next:
+
+- **Security:** there is no real login or role-based access control. Officer and claimant IDs currently come from the UI, so this must not handle real customer information.
+- **Kafka:** not implemented. REST handles the current operations; I would use asynchronous events for notifications and external integrations later.
+- **Database:** H2 and automatic schema updates are fine for a local demo, but I would use a production database and versioned migrations in a real system.
+- **Performance:** the claim list and dashboard are calculated in memory; database filtering and pagination would be better with more data.
+- **Insurance rules:** policy checks, attachments, fraud checks and payment processing are outside this prototype. Marking a claim `SETTLED` does not transfer money.
+- **Testing:** I have backend integration tests, but Angular and reporting tests can be improved.
+
+Outstanding exposure is only a **demo estimate**: approved amount if approved, otherwise reserve if entered, otherwise claimed amount. Totals are kept separate by market and currency rather than adding unlike currencies together.
+
+The initial code was generated with AI assistance, and I'm reviewing it before making further changes. I don't want the demo to suggest that unfinished production features are already available. My next commits will cover changes I actually make and test.
