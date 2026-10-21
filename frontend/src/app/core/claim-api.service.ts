@@ -15,6 +15,15 @@ export interface Claim extends CreateClaimRequest {
   informationRequest: string|null; decisionReason: string|null;
   createdAt: string; updatedAt: string;
 }
+export interface ClaimsPage {
+  content: Claim[];
+  totalElements: number;
+  totalPages: number;
+  page: number;
+  size: number;
+  first: boolean;
+  last: boolean;
+}
 export interface ClaimActivity {
   id: number; actorId: string; action: string; message: string;
   status: ClaimStatus; createdAt: string;
@@ -36,6 +45,12 @@ export class ClaimApiService {
   list(claimantId?: string) {
     const params = claimantId ? new HttpParams().set('claimantId', claimantId) : new HttpParams();
     return this.http.get<Claim[]>(this.base, {params});
+  }
+  listPage(page = 0, size = 10, claimantId?: string, status?: ClaimStatus) {
+    let params = new HttpParams().set('page', page).set('size', size);
+    if (claimantId?.trim()) params = params.set('claimantId', claimantId.trim());
+    if (status) params = params.set('status', status);
+    return this.http.get<ClaimsPage>(this.base, {params});
   }
   history(id: number) { return this.http.get<ClaimActivity[]>(`${this.base}/${id}/history`); }
   assign(id: number, officerId: string) { return this.http.post<Claim>(`${this.base}/${id}/assign`, {officerId}); }

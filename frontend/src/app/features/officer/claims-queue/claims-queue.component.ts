@@ -2,15 +2,16 @@ import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Observable } from 'rxjs';
-import { ClaimApiService, Claim, ClaimActivity, errorMessage, displayStatus } from '../../../core/claim-api.service';
+import { ClaimApiService, Claim, ClaimStatus, ClaimActivity, errorMessage, displayStatus } from '../../../core/claim-api.service';
 
 @Component({selector:'app-claims-queue',standalone:true,imports:[CommonModule,FormsModule],template: `
 <div class="eyebrow">OPERATIONS / CLAIMS DESK</div><div class="page-heading"><div><h1>Claims queue</h1><p>Review incoming claims, request supporting information, and record decisions.</p></div><button class="btn btn-secondary" (click)="load()">↻ Refresh</button></div>
-<section class="card filter-card"><label class="filter-label">Acting officer <input [(ngModel)]="officerId" aria-label="Acting officer" /></label><span class="tiny-muted">Demo: officer-001 or officer-002. This is not authentication.</span></section>
+<section class="card filter-card"><label class="filter-label">Acting officer <input [(ngModel)]="officerId" aria-label="Acting officer" /></label><label class="filter-label">Claim status<select [(ngModel)]="statusFilter" (ngModelChange)="applyFilters()" aria-label="Filter claims by status"><option value="">All statuses</option><option value="SUBMITTED">Submitted</option><option value="IN_REVIEW">In review</option><option value="NEEDS_INFORMATION">Needs information</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option><option value="SETTLED">Settled</option></select></label><span class="tiny-muted">Demo: officer-001 or officer-002. This is not authentication.</span></section>
 @if(error){<div class="alert error" role="alert">{{error}}</div>}@if(message){<div class="alert success" role="status">{{message}}</div>}
-<div class="two-column wide-left"><section class="card"><div class="section-title"><h2>All claims</h2><span class="counter">{{claims.length}} total</span></div>
+<div class="two-column wide-left"><section class="card"><div class="section-title"><h2>All claims</h2><span class="counter">{{totalElements}} total</span></div>
 @if(loading){<p>Loading claims…</p>}
-@for(c of claims;track c.id){<button class="claim-list-item" [class.selected]="selected?.id===c.id" (click)="select(c)"><div><strong>{{c.claimNumber}}</strong><small>{{c.claimantName}} · {{c.market}} · {{c.currency}} {{c.claimedAmount | number:'1.2-2'}}</small><small>Assigned: {{c.assignedOfficerId||'Unassigned'}}</small></div><span class="status" [attr.data-status]="c.status">{{status(c.status)}}</span></button>}@empty{<div class="empty">No claims yet. Submit one from New claim.</div>}
+@for(c of claims;track c.id){<button class="claim-list-item" [class.selected]="selected?.id===c.id" (click)="select(c)"><div><strong>{{c.claimNumber}}</strong><small>{{c.claimantName}} · {{c.market}} · {{c.currency}} {{c.claimedAmount | number:'1.2-2'}}</small><small>Assigned: {{c.assignedOfficerId||'Unassigned'}}</small></div><span class="status" [attr.data-status]="c.status">{{status(c.status)}}</span></button>}@empty{<div class="empty">No claims match these filters.</div>}
+<div class="action-row" style="margin-top:16px"><button class="btn btn-secondary" [disabled]="loading || page===0" (click)="previousPage()">← Previous</button><span class="tiny-muted">Page {{page + 1}} of {{totalPages || 1}}</span><button class="btn btn-secondary" [disabled]="loading || page + 1 >= totalPages" (click)="nextPage()">Next →</button></div>
 </section><aside class="card details-card">@if(selected){<div class="section-title"><h2>Process claim</h2><span class="status" [attr.data-status]="selected.status">{{status(selected.status)}}</span></div>
 <div class="detail-highlight"><strong>{{selected.claimNumber}}</strong><p>{{selected.description}}</p><small>{{selected.claimantName}} · {{selected.claimType}} · {{selected.incidentDate}}</small></div>
 <dl class="details"><div><dt>Claimed</dt><dd>{{selected.currency}} {{selected.claimedAmount | number:'1.2-2'}}</dd></div><div><dt>Reserve</dt><dd>@if(selected.reserveAmount === null) { Not assessed } @else { {{selected.currency}} {{selected.reserveAmount | number:'1.2-2'}} }</dd></div><div><dt>Assigned officer</dt><dd>{{selected.assignedOfficerId||'Unassigned'}}</dd></div></dl>
@@ -31,8 +32,23 @@ import { ClaimApiService, Claim, ClaimActivity, errorMessage, displayStatus } fr
 export class ClaimsQueueComponent implements OnInit {
  api = inject(ClaimApiService);officerId='officer-001';claims:Claim[]=[];selected:Claim|null=null;activities:ClaimActivity[]=[];
  error='';message='';loading=false;saving=false;infoMessage='';reason='';reserveAmount=0;approvedAmount=0;status=displayStatus;
+ page=0;pageSize=10;totalPages=0;totalElements=0;statusFilter:ClaimStatus|''='';
  ngOnInit(){this.load();}
- load(){this.loading=true;this.error='';this.api.list().subscribe({next:claims=>{this.claims=claims;this.loading=false;if(this.selected){const found=claims.find(c=>c.id===this.selected?.id);if(found)this.select(found);}else if(claims.length)this.select(claims[0]);},error:e=>{this.error=errorMessage(e);this.loading=false;}});}
+ applyFilters(){this.page=0;this.load();}
+ previousPage(){if(this.page>0){this.page--;this.load();}}
+ nextPage(){if(this.page+1<this.totalPages){this.page++;this.load();}}
+ load(preferredId?:number){
+   this.loading=true;this.error='';
+   this.api.listPage(this.page,this.pageSize,undefined,this.statusFilter||undefined)
+     .subscribe({next:result=>{
+       this.claims=result.content;this.page=result.page;this.totalPages=result.totalPages;
+       this.totalElements=result.totalElements;this.loading=false;
+       const match=this.claims.find(c=>c.id===(preferredId??this.selected?.id));
+       if(match)this.select(match);
+       else if(this.claims.length)this.select(this.claims[0]);
+       else {this.selected=null;this.activities=[];}
+     },error:e=>{this.error=errorMessage(e);this.loading=false;}});
+ }
  select(c:Claim){this.selected=c;this.reason='';this.infoMessage='';this.reserveAmount=c.reserveAmount??c.claimedAmount;this.approvedAmount=c.approvedAmount??c.claimedAmount;this.api.history(c.id).subscribe({next:a=>this.activities=a,error:e=>this.error=errorMessage(e)});}
- execute(request:Observable<Claim>,success:string){this.saving=true;this.error='';this.message='';request.subscribe({next:c=>{this.saving=false;this.message=success;this.claims=this.claims.map(x=>x.id===c.id?c:x);this.select(c);},error:e=>{this.saving=false;this.error=errorMessage(e);}});}
+ execute(request:Observable<Claim>,success:string){this.saving=true;this.error='';this.message='';request.subscribe({next:c=>{this.saving=false;this.message=success;this.load(c.id);},error:e=>{this.saving=false;this.error=errorMessage(e);}});}
 }

@@ -2,6 +2,7 @@ package com.chubb.claims.claim.api;
 
 import com.chubb.claims.claim.api.dto.*;
 import com.chubb.claims.claim.domain.ClaimStatus;
+import org.springframework.data.domain.Page;
 import com.chubb.claims.claim.service.ClaimService;
 import jakarta.validation.Valid;
 import org.springframework.http.*;
@@ -24,10 +25,21 @@ public class ClaimController {
     @GetMapping("/{id}")
     public ClaimResponse one(@PathVariable Long id) { return service.get(id); }
 
-    @GetMapping
+    // Backward-compatible endpoint: no `page` parameter returns the original JSON array.
+    @GetMapping(params = "!page")
     public List<ClaimResponse> all(@RequestParam(required=false) String claimantId,
-                                    @RequestParam(required=false) ClaimStatus status) {
+                                   @RequestParam(required=false) ClaimStatus status) {
         return service.list(claimantId, status);
+    }
+
+    // Supplying `page` opts in to a paginated JSON response with stable metadata.
+    @GetMapping(params = "page")
+    public ClaimPageResponse page(@RequestParam(required=false) String claimantId,
+                                  @RequestParam(required=false) ClaimStatus status,
+                                  @RequestParam int page,
+                                  @RequestParam(defaultValue="10") int size) {
+        Page<ClaimResponse> result = service.listPaged(claimantId, status, page, size);
+        return ClaimPageResponse.from(result);
     }
 
     @GetMapping("/{id}/history")

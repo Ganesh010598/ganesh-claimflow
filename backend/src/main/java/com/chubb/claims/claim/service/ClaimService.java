@@ -4,6 +4,8 @@ import com.chubb.claims.claim.api.dto.*;
 import com.chubb.claims.claim.domain.*;
 import com.chubb.claims.claim.repository.*;
 import com.chubb.claims.common.NotFoundException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -73,11 +75,20 @@ public class ClaimService {
 
     public ClaimResponse get(Long id) { return ClaimResponse.from(find(id)); }
 
+    private static final Sort NEWEST_FIRST = Sort.by(Sort.Direction.DESC, "createdAt", "id");
+
+    // Kept for clients using the original JSON-array endpoint.
     public List<ClaimResponse> list(String claimantId, ClaimStatus status) {
-        return claims.findAll(Sort.by(Sort.Direction.DESC, "createdAt", "id")).stream()
-            .filter(c -> claimantId == null || claimantId.equals(c.claimantId))
-            .filter(c -> status == null || status == c.status)
+        return claims.findMatching(claimantId, status, NEWEST_FIRST).stream()
             .map(ClaimResponse::from).toList();
+    }
+
+    public Page<ClaimResponse> listPaged(String claimantId, ClaimStatus status, int page, int size) {
+        if (page < 0 || size < 1 || size > 100) {
+            throw new IllegalArgumentException("Page must be >= 0 and size must be between 1 and 100");
+        }
+        return claims.findMatching(claimantId, status, PageRequest.of(page, size, NEWEST_FIRST))
+            .map(ClaimResponse::from);
     }
 
     public List<ActivityResponse> history(Long id) {
